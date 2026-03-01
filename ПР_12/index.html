@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Fetch Practice App</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 40px auto;
+}
+
+section {
+  margin-bottom: 50px;
+}
+
+button {
+  padding: 6px 12px;
+  margin: 5px 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input {
+  padding: 6px;
+  width: 250px;
+}
+
+.loading {
+  color: blue;
+}
+
+.error {
+  color: red;
+}
+
+ul {
+  padding-left: 20px;
+}
+</style>
+</head>
+<body>
+
+<h1>Практика Fetch API</h1>
+
+<!-- ================= 1. Countries ================= -->
+
+<section>
+  <h2>Список країн</h2>
+  <button id="loadCountries">Завантажити</button>
+  <button id="retryCountries" style="display:none;">Retry</button>
+  <p id="countriesStatus"></p>
+  <ul id="countriesList"></ul>
+</section>
+
+<!-- ================= 2. Hacker News ================= -->
+
+<section>
+  <h2>Пошук новин (Hacker News)</h2>
+  <input type="text" id="searchInput" placeholder="Введіть запит...">
+  <button id="clearNews">Clear</button>
+  <p id="newsStatus"></p>
+  <ul id="newsList"></ul>
+</section>
+
+<script>
+
+// =========================
+// 1. Countries Fetch
+// =========================
+
+const loadBtn = document.getElementById('loadCountries');
+const retryBtn = document.getElementById('retryCountries');
+const countriesStatus = document.getElementById('countriesStatus');
+const countriesList = document.getElementById('countriesList');
+
+async function loadCountries() {
+  countriesStatus.textContent = 'Loading...';
+  countriesStatus.className = 'loading';
+  countriesList.innerHTML = '';
+  loadBtn.disabled = true;
+  retryBtn.style.display = 'none';
+
+  try {
+    const res = await fetch('https://restcountries.com/v3.1/all?fields=name');
+
+    if (!res.ok) throw new Error('Network error');
+
+    const data = await res.json();
+
+    const sorted = data
+      .map(c => c.name.common)
+      .sort((a, b) => a.localeCompare(b));
+
+    sorted.forEach(name => {
+      const li = document.createElement('li');
+      li.textContent = name;
+      countriesList.appendChild(li);
+    });
+
+    countriesStatus.textContent = `Завантажено ${sorted.length} країн`;
+    countriesStatus.className = '';
+  } catch (error) {
+    countriesStatus.textContent = 'Помилка завантаження';
+    countriesStatus.className = 'error';
+    retryBtn.style.display = 'inline-block';
+  } finally {
+    loadBtn.disabled = false;
+  }
+}
+
+loadBtn.addEventListener('click', loadCountries);
+retryBtn.addEventListener('click', loadCountries);
+
+
+// =========================
+// 2. Hacker News Search
+// =========================
+
+const searchInput = document.getElementById('searchInput');
+const newsStatus = document.getElementById('newsStatus');
+const newsList = document.getElementById('newsList');
+const clearBtn = document.getElementById('clearNews');
+
+let debounceTimer = null;
+
+function debounce(callback, delay) {
+  return (...args) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => callback(...args), delay);
+  };
+}
+
+async function searchNews(query) {
+  if (!query.trim()) {
+    newsList.innerHTML = '';
+    newsStatus.textContent = '';
+    return;
+  }
+
+  newsStatus.textContent = 'Loading...';
+  newsStatus.className = 'loading';
+  newsList.innerHTML = '';
+
+  // перевірка кешу
+  const cached = sessionStorage.getItem('news_' + query);
+  if (cached) {
+    renderNews(JSON.parse(cached));
+    newsStatus.textContent = '(з кешу)';
+    newsStatus.className = '';
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story`
+    );
+
+    if (!res.ok) throw new Error('Network error');
+
+    const data = await res.json();
+
+    if (data.hits.length === 0) {
+      newsStatus.textContent = 'Нічого не знайдено';
+      newsStatus.className = '';
+      return;
+    }
+
+    sessionStorage.setItem('news_' + query, JSON.stringify(data.hits));
+    renderNews(data.hits);
+
+    newsStatus.textContent = `Знайдено ${data.hits.length} результатів`;
+    newsStatus.className = '';
+
+  } catch (error) {
+    newsStatus.textContent = 'Помилка пошуку';
+    newsStatus.className = 'error';
+  }
+}
+
+function renderNews(items) {
+  newsList.innerHTML = '';
+
+  items.forEach(item => {
+    const li = document.createElement('li');
+
+    const link = item.url || `https://news.ycombinator.com/item?id=${item.objectID}`;
+
+    li.innerHTML = `
+      <strong>${item.title}</strong><br>
+      Автор: ${item.author} | Бали: ${item.points}<br>
+      <a href="${link}" target="_blank">Перейти</a>
+      <hr>
+    `;
+
+    newsList.appendChild(li);
+  });
+}
+
+searchInput.addEventListener('input',
+  debounce((e) => {
+    searchNews(e.target.value);
+  }, 400)
+);
+
+// Clear кнопка
+clearBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  newsList.innerHTML = '';
+  newsStatus.textContent = '';
+});
+
+</script>
+
+</body>
+</html>
