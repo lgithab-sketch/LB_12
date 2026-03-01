@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Fetch Practice</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 900px;
+  margin: 40px auto;
+}
+
+section {
+  margin-bottom: 50px;
+}
+
+button {
+  padding: 6px 12px;
+  margin: 5px 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input {
+  padding: 6px;
+  width: 250px;
+}
+
+.loading { color: blue; }
+.error { color: red; }
+.empty { color: gray; }
+
+ul {
+  padding-left: 20px;
+}
+
+.card {
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 5px;
+}
+</style>
+</head>
+<body>
+
+<h1>Практика Fetch API</h1>
+
+<!-- =================== 1. COUNTRIES =================== -->
+
+<section>
+  <h2>1️⃣ Список країн</h2>
+  <button id="loadCountries">Завантажити</button>
+  <button id="retryCountries" style="display:none;">Retry</button>
+  <p id="countriesStatus"></p>
+  <ul id="countriesList"></ul>
+</section>
+
+<!-- =================== 2. HACKER NEWS =================== -->
+
+<section>
+  <h2>2️⃣ Пошук новин (Hacker News)</h2>
+
+  <input type="text" id="searchInput" placeholder="Введіть запит...">
+  <button id="searchBtn">Пошук</button>
+  <button id="clearBtn">Clear</button>
+  <button id="retryNews" style="display:none;">Retry</button>
+
+  <p id="newsStatus"></p>
+  <div id="newsResults"></div>
+</section>
+
+<script>
+
+/* ===================================================
+   1. FETCH COUNTRIES
+=================================================== */
+
+const loadBtn = document.getElementById('loadCountries');
+const retryCountries = document.getElementById('retryCountries');
+const countriesStatus = document.getElementById('countriesStatus');
+const countriesList = document.getElementById('countriesList');
+
+async function fetchCountries() {
+  countriesStatus.textContent = 'Loading...';
+  countriesStatus.className = 'loading';
+  countriesList.innerHTML = '';
+  loadBtn.disabled = true;
+  retryCountries.style.display = 'none';
+
+  try {
+    const res = await fetch('https://restcountries.com/v3.1/all?fields=name');
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    const sorted = data
+      .map(c => c.name.common)
+      .sort((a,b)=>a.localeCompare(b));
+
+    sorted.forEach(name => {
+      const li = document.createElement('li');
+      li.textContent = name;
+      countriesList.appendChild(li);
+    });
+
+    countriesStatus.textContent = `Завантажено ${sorted.length} країн`;
+    countriesStatus.className = '';
+
+  } catch (err) {
+    countriesStatus.textContent = 'Помилка завантаження даних';
+    countriesStatus.className = 'error';
+    retryCountries.style.display = 'inline-block';
+  } finally {
+    loadBtn.disabled = false;
+  }
+}
+
+loadBtn.addEventListener('click', fetchCountries);
+retryCountries.addEventListener('click', fetchCountries);
+
+
+/* ===================================================
+   2. HACKER NEWS SEARCH
+=================================================== */
+
+const input = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const clearBtn = document.getElementById('clearBtn');
+const retryNews = document.getElementById('retryNews');
+const newsStatus = document.getElementById('newsStatus');
+const newsResults = document.getElementById('newsResults');
+
+let controller = null;
+let lastQuery = '';
+let debounceTimer = null;
+
+function debounce(fn, delay) {
+  return (...args) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+async function searchNews(query) {
+
+  if (!query.trim()) {
+    setEmptyState('Введіть запит');
+    return;
+  }
+
+  lastQuery = query;
+
+  // кеш
+  const cached = sessionStorage.getItem('hn_' + query);
+  if (cached) {
+    renderNews(JSON.parse(cached));
+    newsStatus.textContent = '(з кешу)';
+    newsStatus.className = '';
+    return;
+  }
+
+  if (controller) controller.abort();
+  controller = new AbortController();
+
+  setLoadingState();
+
+  try {
+    const res = await fetch(
+      `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story`,
+      { signal: controller.signal }
+    );
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    if (data.hits.length === 0) {
+      setEmptyState('Нічого не знайдено');
+      return;
+    }
+
+    sessionStorage.setItem('hn_' + query, JSON.stringify(data.hits));
+
+    renderNews(data.hits);
+    newsStatus.textContent = `Знайдено ${data.hits.length} результатів`;
+    newsStatus.className = '';
+    retryNews.style.display = 'none';
+
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+
+    newsStatus.textContent = 'Помилка завантаження';
+    newsStatus.className = 'error';
+    newsResults.innerHTML = '';
+    retryNews.style.display = 'inline-block';
+  }
+}
+
+function renderNews(items) {
+  newsResults.innerHTML = '';
+
+  items.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const link = item.url || 
+      `https://news.ycombinator.com/item?id=${item.objectID}`;
+
+    card.innerHTML = `
+      <strong>${item.title}</strong><br>
+      Автор: ${item.author} | Бали: ${item.points}<br>
+      <a href="${link}" target="_blank">Перейти</a>
+    `;
+
+    newsResults.appendChild(card);
+  });
+}
+
+function setLoadingState() {
+  newsStatus.textContent = 'Loading...';
+  newsStatus.className = 'loading';
+  newsResults.innerHTML = '';
+  retryNews.style.display = 'none';
+}
+
+function setEmptyState(text) {
+  newsStatus.textContent = text;
+  newsStatus.className = 'empty';
+  newsResults.innerHTML = '';
+}
+
+searchBtn.addEventListener('click', () => {
+  searchNews(input.value);
+});
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    searchNews(input.value);
+  }
+});
+
+// debounce (бонус)
+input.addEventListener('input',
+  debounce((e) => {
+    searchNews(e.target.value);
+  }, 400)
+);
+
+clearBtn.addEventListener('click', () => {
+  input.value = '';
+  newsResults.innerHTML = '';
+  newsStatus.textContent = '';
+  retryNews.style.display = 'none';
+});
+
+retryNews.addEventListener('click', () => {
+  searchNews(lastQuery);
+});
+
+</script>
+</body>
+</html>
