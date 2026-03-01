@@ -1,0 +1,41 @@
+body {
+    font-family: Arial, sans-serif;
+    padding: 40px;
+}
+
+.tabs {
+    max-width: 500px;
+    margin: auto;
+}
+
+.tabs__buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.tab {
+    padding: 10px 15px;
+    border: none;
+    background-color: #ddd;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.tab.active {
+    background-color: #4caf50;
+    color: white;
+}
+
+.tabs__content {
+    border: 1px solid #ccc;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
